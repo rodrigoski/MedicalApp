@@ -1,0 +1,21 @@
+# Contexto de build del microservicio de notificaciones.
+# Reduce el contexto enviado al demonio de Docker y evita que un `.env` con
+# credenciales reales acabe dentro de la imagen.
+
+.git
+.gitignore
+.dockerignore
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+.idea/
+.vscode/
+*.log

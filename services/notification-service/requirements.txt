@@ -1,0 +1,25 @@
+# Dependencias de EJECUCION del microservicio de notificaciones.
+#
+# Versiones fijadas (pinned) a proposito: un despliegue reproducible no puede
+# depender de "la ultima version" de nada.
+#
+# Este archivo es lo que instala la imagen de produccion. Las herramientas de
+# prueba viven en requirements-dev.txt y NO se instalan en ella: pytest en un
+# contenedor de servicio no aporta nada en ejecucion y si enlarga la superficie
+# de ataque y la imagen.
+#
+# NOTA SOBRE EL MODELO DE CONCURRENCIA:
+# se usa SQLAlchemy SINCRONO y los endpoints se declaran con `def` (no
+# `async def`). FastAPI ejecuta las funciones `def` en un thread pool, de modo
+# que el acceso a la base de datos bloqueante no detiene el event loop del
+# servidor. Es una decision consciente: este servicio tolera E/S bloqueante
+# mejor que la complejidad de un stack asincrono completo, y ademas permite que
+# las pruebas corran sin dependencias de event loop.
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+SQLAlchemy==2.0.36
+psycopg[binary]==3.2.3
+httpx==0.28.1

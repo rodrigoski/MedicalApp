@@ -1,0 +1,282 @@
+# =============================================================================
+# ClinicApp - orquestacion de desarrollo con Docker Compose
+# -----------------------------------------------------------------------------
+# Un solo comando levanta todo:  docker compose up --build
+#   postgres            -> base de datos (PostgreSQL 16)
+#   migrator            -> ejecuta migraciones + seed (one-shot)
+#   api                 -> Laravel 12 (PHP 8.3)  -> http://localhost:8000
+#   queue-worker        -> worker de la cola de Laravel
+#   notification-service-> FastAPI (Python 3.12) -> http://localhost:8001
+#   gateway             -> Nginx (reverse proxy) -> http://localhost:8080
+# =============================================================================
+
+name: clinicapp
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# -----------------------------------------------------------------------------
+# Configuracion compartida por todos los servicios PHP (api / migrator / worker)
+# -----------------------------------------------------------------------------
+x-app-image: &app-image clinicapp/api:local
+
+x-app-build: &app-build
+  context: ./backend
+  dockerfile: Dockerfile
+  args:
+    APP_ENV: ${APP_ENV:-local}
+
+x-app-environment: &app-environment
+  APP_NAME: ${APP_NAME:-ClinicApp}
+  APP_ENV: ${APP_ENV:-local}
+  APP_DEBUG: ${APP_DEBUG:-true}
+  APP_KEY: ${APP_KEY:-}
+  APP_URL: ${APP_URL:-http://localhost:8000}
+  APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
+  APP_LOCALE: en
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DB_CONNECTION: pgsql
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_DATABASE: ${POSTGRES_DB:-clinic_app}
+  DB_USERNAME: ${POSTGRES_USER:-clinic}
+  DB_PASSWORD: ${POSTGRES_PASSWORD:-clinic_local_password}
+  DB_SSLMODE: disable
+  CACHE_STORE: database
+  CACHE_PREFIX: clinicapp_cache
+  SESSION_DRIVER: array
+  QUEUE_CONNECTION: database
+  # Microservicio de notificaciones (FastAPI)
+  NOTIFICATION_SERVICE_URL: http://notification-service:8000
+  NOTIFICATION_SERVICE_API_KEY: ${NOTIFICATIONS_API_KEY:-dev-notifications-key-change-me}
+  NOTIFICATION_SERVICE_TIMEOUT: 4
+  # Seguridad interna entre servicios
+  INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-clinic-key-change-me}
+  # Reglas operativas de la clinica (NO son reglas de negocio: la politica de
+  # no-traslape es invariable y vive en el dominio).
+  CLINIC_TIMEZONE: ${CLINIC_TIMEZONE:-America/Bogota}
+  CLINIC_NAME: ${CLINIC_NAME:-ClinicApp Centro Medico}
+  CLINIC_WORKING_HOURS_START: "8"
+  CLINIC_WORKING_HOURS_END: "18"
+  CLINIC_SLOT_MINUTES: "30"
+  CLINIC_MAX_APPOINTMENTS_PER_DOCTOR_PER_DAY: "24"
+  # Servidor de desarrollo multihilo (artisan serve)
+  PHP_CLI_SERVER_WORKERS: "8"
+
+x-app-volumes: &app-volumes
+  - app-secrets:/run/secrets
+
+services:
+  # ---------------------------------------------------------------------------
+  # 1. Base de datos
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: clinicapp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-clinic}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clinic_local_password}
+      POSTGRES_DB: ${POSTGRES_DB:-clinic_app}
+      POSTGRES_NOTIFICATIONS_DB: ${POSTGRES_NOTIFICATIONS_DB:-clinic_notifications}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "${POSTGRES_USER:-clinic}" -d "${POSTGRES_DB:-clinic_app}" -h 127.0.0.1
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    networks: [clinic-net]
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # 2. Migrador / instalador (one-shot): espera la BD, genera APP_KEY, migra y siembra
+  # ---------------------------------------------------------------------------
+  migrator:
+    build: *app-build
+    image: *app-image
+    container_name: clinicapp-migrator
+    restart: "no"
+    environment: *app-environment
+    volumes: *app-volumes
+    command: ["php", "artisan", "app:install", "--seed", "--wait=60"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [clinic-net]
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # 3. Microservicio de notificaciones (FastAPI)
+  #    Variables Segun app/config.py del propio microservicio.
+  # ---------------------------------------------------------------------------
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+      # Target explicito: el Dockerfile tiene una etapa adicional para pruebas,
+      # y no conviene depender de cual sea la ultima para no desplegar pytest.
+      target: runtime
+    image: clinicapp/notifications:local
+    container_name: clinicapp-notifications
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: notification-service
+      VERSION: ${NOTIFICATIONS_VERSION:-1.0.0}
+      ENVIRONMENT: ${APP_ENV:-local}
+      DEBUG: ${APP_DEBUG:-false}
+      HOST: 0.0.0.0
+      PORT: "8000"
+      # La misma clave que usa el backend para publicar en la outbox.
+      API_KEY: ${NOTIFICATIONS_API_KEY:-dev-notifications-key-change-me}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-clinic}:${POSTGRES_PASSWORD:-clinic_local_password}@postgres:5432/${POSTGRES_NOTIFICATIONS_DB:-clinic_notifications}
+      DB_ECHO: "false"
+      MAX_ATTEMPTS: "5"
+      BACKOFF_BASE_SECONDS: "30"
+      BACKOFF_MAX_SECONDS: "3600"
+      CHANNEL: ${NOTIFICATIONS_CHANNEL:-log}
+      WEBHOOK_URL: ${NOTIFICATIONS_WEBHOOK_URL:-}
+      WEBHOOK_TIMEOUT_SECONDS: "4"
+      POLL_INTERVAL_SECONDS: "15"
+      BATCH_SIZE: "25"
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      - "${NOTIFICATIONS_PORT:-8001}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health',timeout=3).status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [clinic-net]
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # 3.b Suite de pruebas del microservicio
+  #
+  # Servicio con perfil "test", asi que NO arranca con `docker compose up`:
+  # construye la etapa `test` del Dockerfile, que si incluye pytest, y por eso
+  # la imagen de ejecucion queda sin herramientas de prueba.
+  #
+  # Existe como servicio aparte y no como `docker compose exec` sobre el
+  # contenedor vivo porque las pruebas usan SQLite en memoria y no tocan la base
+  # de datos del stack: asi se pueden correr sin que el servicio este arrancado
+  # y sin arriesgarse a escribir sobre los datos de la demo.
+  # ---------------------------------------------------------------------------
+  notification-service-tests:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+      target: test
+    image: clinicapp/notifications-tests:local
+    profiles: ["test"]
+    environment:
+      ENVIRONMENT: test
+      API_KEY: dev-notifications-test-key-not-for-production
+      DATABASE_URL: sqlite+pysqlite://
+    networks: [clinic-net]
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # 4. API principal (Laravel)
+  # ---------------------------------------------------------------------------
+  api:
+    build: *app-build
+    image: *app-image
+    container_name: clinicapp-api
+    restart: unless-stopped
+    environment: *app-environment
+    volumes: *app-volumes
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+      notification-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "php -r \"exit(@file_get_contents('http://127.0.0.1:8000/api/v1/health') ? 0 : 1);\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [clinic-net]
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # 5. Worker de la cola (entrega de eventos al microservicio)
+  # ---------------------------------------------------------------------------
+  queue-worker:
+    build: *app-build
+    image: *app-image
+    container_name: clinicapp-queue-worker
+    restart: unless-stopped
+    environment: *app-environment
+    volumes: *app-volumes
+    command:
+      - php
+      - artisan
+      - queue:work
+      - --queue=default
+      - --tries=3
+      - --backoff=5
+      - --sleep=2
+      - --max-time=3600
+      - --max-jobs=500
+      - -v
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    networks: [clinic-net]
+    logging: *default-logging
+
+  # ---------------------------------------------------------------------------
+  # 6. Gateway Nginx
+  # ---------------------------------------------------------------------------
+  gateway:
+    image: nginx:1.27-alpine
+    container_name: clinicapp-gateway
+    restart: unless-stopped
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "${GATEWAY_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    networks: [clinic-net]
+    logging: *default-logging
+
+volumes:
+  postgres-data:
+    driver: local
+  app-secrets:
+    driver: local
+
+networks:
+  clinic-net:
+    driver: bridge

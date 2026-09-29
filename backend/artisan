@@ -1,0 +1,26 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Symfony\Component\Console\Input\ArgvInput;
+
+define('LARAVEL_START', microtime(true));
+
+/*
+|--------------------------------------------------------------------------
+| Punto de entrada de la consola Artisan
+|--------------------------------------------------------------------------
+| artisan es el ejecutor de comandos (migraciones, seeders, tests, cola,
+| tareas programadas). Vive fuera de public/ a proposito: no debe quedar
+| accesible por HTTP.
+*/
+
+require __DIR__.'/vendor/autoload.php';
+
+/** @var Illuminate\Foundation\Application $app */
+$app = require_once __DIR__.'/bootstrap/app.php';
+
+$status = $app->handleCommand(new ArgvInput);
+
+exit($status);

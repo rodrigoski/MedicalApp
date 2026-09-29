@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache"
+         executionOrder="random"
+         failOnWarning="true"
+         failOnRisky="true"
+         beStrictAboutOutputDuringTests="true"
+         displayDetailsOnTestsThatTriggerErrors="true"
+         displayDetailsOnTestsThatTriggerWarnings="true"
+         displayDetailsOnPhpunitDeprecations="true">
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>tests/Feature</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <env name="APP_KEY" value="base64:dGVzdGluZ2tleXRlc3Rpbmd0ZXN0aW5na2V5MTIzNDU2Nzg="/>
+        <env name="APP_DEBUG" value="false"/>
+        <env name="APP_LOCALE" value="en"/>
+        <env name="APP_FALLBACK_LOCALE" value="en"/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="CACHE_STORE" value="array"/>
+        <env name="DB_CONNECTION" value="sqlite"/>
+        <env name="DB_DATABASE" value=":memory:"/>
+        <env name="MAIL_MAILER" value="array"/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="SESSION_DRIVER" value="array"/>
+        <env name="INTERNAL_API_KEY" value="test-clinic-key"/>
+        <env name="NOTIFICATION_SERVICE_API_KEY" value="test-notifications-key"/>
+        <env name="NOTIFICATION_SERVICE_URL" value="http://notification-service:8000"/>
+        <env name="CLINIC_MAX_APPOINTMENTS_PER_DOCTOR_PER_DAY" value="24"/>
+        <env name="CLINIC_PAST_DATE_TOLERANCE_MINUTES" value="0"/>
+    </php>
+</phpunit>

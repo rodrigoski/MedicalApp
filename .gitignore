@@ -1,0 +1,82 @@
+# =============================================================================
+# ClinicApp - .gitignore
+#
+# Regla general: lo que se puede regenerar no se versiona. En un proyecto
+# clinico anade una capa mas: NUNCA se versionan credenciales ni datos de
+# pacientes, ni siquiera de ejemplo con forma parecida a los reales.
+# =============================================================================
+
+# --- Sistema operativo -------------------------------------------------------
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Editores ---------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- PHP / Laravel ----------------------------------------------------------
+backend/vendor/
+backend/node_modules/
+backend/.phpunit.cache/
+backend/.phpunit.result.cache
+backend/storage/*.key
+backend/storage/framework/cache/*
+!backend/storage/framework/cache/.gitkeep
+backend/storage/framework/sessions/*
+!backend/storage/framework/sessions/.gitkeep
+backend/storage/framework/views/*
+!backend/storage/framework/views/.gitkeep
+backend/storage/logs/*
+!backend/storage/logs/.gitkeep
+backend/bootstrap/cache/*
+!backend/bootstrap/cache/.gitkeep
+backend/public/build/
+backend/public/hot
+backend/public/storage
+backend/.php-cs-fixer.cache
+
+# --- Python / FastAPI --------------------------------------------------------
+services/notification-service/__pycache__/
+services/notification-service/**/__pycache__/
+services/notification-service/*.py[cod]
+services/notification-service/.pytest_cache/
+services/notification-service/.coverage
+services/notification-service/htmlcov/
+services/notification-service/.venv/
+services/notification-service/venv/
+services/notification-service/.ruff_cache/
+services/notification-service/.mypy_cache/
+
+# --- Credenciales -----------------------------------------------------------
+# `.env` y cualquier variante queda fuera del repositorio por definicion.
+# Se versionan SOLO los `.env.example`, que no contienen secretos reales.
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+!**/storage/*.key
+
+# --- Datos de prueba y artefactos -------------------------------------------
+backend/database/*.sqlite
+backend/database/*.sqlite-shm
+backend/database/*.sqlite-wal
+*.sql
+*.dump
+*.tar.gz
+/coverage/
+/build/
+/dist/
+/reports/
+docker-compose.override.yml
+
+# --- Logs -------------------------------------------------------------------
+*.log
+npm-debug.log*
+yarn-error.log*

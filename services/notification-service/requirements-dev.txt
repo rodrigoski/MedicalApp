@@ -1,0 +1,15 @@
+# Dependencias de DESARROLLO y PRUEBAS del microservicio de notificaciones.
+#
+# No se instalan en la imagen de produccion (ver requirements.txt y el
+# Dockerfile). Incorpora `-r requirements.txt` para que las pruebas usen
+# exactamente las mismas versiones que el servicio, en lugar de un conjunto
+# distinto que podria ocultar una incompatibilidad.
+#
+# `-r requirements.txt` en vez de repetir las versiones: si se duplicaran, un
+# cambio en la version de SQLAlchemy podria llegar a un archivo y no al otro, y
+# las pruebas dejarian de reflejar lo que corre en produccion.
+
+-r requirements.txt
+
+pytest==8.3.4
+pytest-cov==6.0.0

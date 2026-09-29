@@ -1,0 +1,23 @@
+# Dependencias de Python del microservicio de notificaciones.
+#
+# Se usa requirements.txt y no pyproject.toml porque la aplicacion no se
+# instala como paquete: se ejecuta desde el codigo fuente. requirements.txt es
+# ademas lo que entiende `pip install -r` en cualquier entorno, incluidos los
+# contenedores y los sistemas de CI.
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+.idea/
+.vscode/
+*.log
+
+# Nunca versionar un .env real: contiene la API key.
+.env
+.env.*
+!.env.example
